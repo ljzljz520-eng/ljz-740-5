@@ -1,0 +1,8 @@
+/native/build/
+/build/
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.bin
