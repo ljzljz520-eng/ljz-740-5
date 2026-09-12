@@ -93,6 +93,10 @@ VI_API vi_index_t *vi_index_load(const char *path);
 VI_API size_t vi_index_size(const vi_index_t *index);
 VI_API int    vi_index_dim(const vi_index_t *index, int32_t *out_dim);
 
+/* 读出索引的距离度量 (vi_metric_t); load 出的句柄同样适用,
+ * 保证 Go 侧公开状态与持久化文件头中的 metric 一致。 */
+VI_API int    vi_index_metric(const vi_index_t *index, int32_t *out_metric);
+
 /* 取最近一次失败的错误信息 (线程局部静态存储, 不需要释放) */
 VI_API const char *vi_last_error(void);
 

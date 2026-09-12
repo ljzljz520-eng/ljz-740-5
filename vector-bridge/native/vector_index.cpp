@@ -263,6 +263,13 @@ int vi_index_dim(const vi_index_t *index, int32_t *out_dim) {
     return 0;
 }
 
+int vi_index_metric(const vi_index_t *index, int32_t *out_metric) {
+    if (!index || !out_metric) { set_error("null argument"); return 1; }
+    std::lock_guard<std::mutex> lk(index->mu);
+    *out_metric = static_cast<int32_t>(index->metric);
+    return 0;
+}
+
 const char *vi_last_error(void) { return g_err.c_str(); }
 
 } // extern "C"

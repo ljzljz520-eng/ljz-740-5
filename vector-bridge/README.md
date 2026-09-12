@@ -99,7 +99,7 @@ defer idx2.Close()
 | `vi_index_add(h, ids, vectors, n)` | 批量添加 | 数组调用方拥有，返回后不持有 |
 | `vi_index_search(h, q, k, out, *n)` | TopK，结果升序 | 结果缓冲调用方分配 |
 | `vi_index_save / vi_index_load` | 小端二进制格式落盘/恢复 | load 出的句柄调用方释放 |
-| `vi_index_size / vi_index_dim` | 元信息 | — |
+| `vi_index_size / vi_index_dim / vi_index_metric` | 元信息（条数 / 维度 / 距离度量） | — |
 | `vi_last_error()` | 最近一次失败原因（线程局部） | 返回静态/线程存储，**禁止 free** |
 
 约定：所有可失败接口返回 `int`（0 成功，非 0 失败），错误详情立刻通过

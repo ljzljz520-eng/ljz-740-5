@@ -70,6 +70,7 @@ typedef int         (*pfn_save)(const vi_index_t *, const char *);
 typedef vi_index_t *(*pfn_load)(const char *);
 typedef size_t      (*pfn_size)(const vi_index_t *);
 typedef int         (*pfn_dim)(const vi_index_t *, int32_t *);
+typedef int         (*pfn_metric)(const vi_index_t *, int32_t *);
 typedef const char *(*pfn_err)(void);
 
 // Go 无法直接把 void* 当函数指针调用, 每个 ABI 入口用一个极小的 C 跳板转型。
@@ -85,6 +86,7 @@ static int         vi_t_save(void *p, const vi_index_t *h, const char *path) { r
 static vi_index_t *vi_t_load(void *p, const char *path)                     { return ((pfn_load)p)(path); }
 static size_t      vi_t_size(void *p, const vi_index_t *h)                  { return ((pfn_size)p)(h); }
 static int         vi_t_dim(void *p, const vi_index_t *h, int32_t *d)       { return ((pfn_dim)p)(h, d); }
+static int         vi_t_metric(void *p, const vi_index_t *h, int32_t *m)    { return ((pfn_metric)p)(h, m); }
 static const char *vi_t_lasterr(void *p)                                    { return ((pfn_err)p)(); }
 */
 import "C"
@@ -138,7 +140,7 @@ var ErrClosed = errors.New("vector index already closed")
 
 // symbols 缓存 dlsym 解析出的函数地址, 之后每次调用零查找开销。
 type symbols struct {
-	create, free, add, search, save, load, size, dim, lastErr unsafe.Pointer
+	create, free, add, search, save, load, size, dim, metric, lastErr unsafe.Pointer
 }
 
 type loadedLib struct {
@@ -266,6 +268,7 @@ func openAndResolve(path string) (*loadedLib, error) {
 		{"vi_index_load", &s.load},
 		{"vi_index_size", &s.size},
 		{"vi_index_dim", &s.dim},
+		{"vi_index_metric", &s.metric},
 		{"vi_last_error", &s.lastErr},
 	}
 	for _, e := range entries {
@@ -482,7 +485,20 @@ func LoadIndex(path string) (*Index, error) {
 		C.vi_t_free(l.sym.free, (**C.vi_index_t)(unsafe.Pointer(&h)))
 		return nil, nativeErr(l.sym)
 	}
-	idx := &Index{handle: unsafe.Pointer(h), dim: int(dim)}
+	// metric 必须从原生句柄回读: 文件头里保存了 metric, vi_index_load 也已
+	// 恢复到句柄内部; 若用 Go 侧零值 (恰为 L2) 会把 cosine 索引误报成 l2,
+	// 造成公开 API 状态与持久化内容/原生实际行为不一致。
+	var metric C.int32_t
+	if rc := C.vi_t_metric(l.sym.metric, h, &metric); rc != 0 {
+		C.vi_t_free(l.sym.free, (**C.vi_index_t)(unsafe.Pointer(&h)))
+		return nil, nativeErr(l.sym)
+	}
+	m := Metric(metric)
+	if m != L2 && m != Cosine {
+		C.vi_t_free(l.sym.free, (**C.vi_index_t)(unsafe.Pointer(&h)))
+		return nil, fmt.Errorf("vecidx: native index reports invalid metric %d", int32(metric))
+	}
+	idx := &Index{handle: unsafe.Pointer(h), dim: int(dim), metric: m}
 	runtime.SetFinalizer(idx, indexFinalize)
 	return idx, nil
 }

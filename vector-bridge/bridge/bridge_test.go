@@ -115,12 +115,68 @@ func TestSaveLoad(t *testing.T) {
 	if idx2.Dim() != 3 || idx2.Size() != 2 {
 		t.Fatalf("reloaded state = dim %d size %d", idx2.Dim(), idx2.Size())
 	}
+	if idx2.Metric() != L2 {
+		t.Fatalf("reloaded Metric = %v, want l2", idx2.Metric())
+	}
 	rs, err := idx2.Search([]float32{1, 2, 3}, 1)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if rs[0].ID != 7 || rs[0].Distance != 0 {
 		t.Fatalf("reloaded search = %+v, want id 7 dist 0", rs[0])
+	}
+}
+
+func TestSaveLoadCosineMetric(t *testing.T) {
+	skipIfNoLib(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cosine.bin")
+
+	idx, err := NewIndex(Config{Dim: 2, Metric: Cosine})
+	if err != nil {
+		t.Fatalf("NewIndex: %v", err)
+	}
+	if err := idx.Add([]int64{1, 2}, []float32{1, 0, -1, 0}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := idx.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	loaded, err := LoadIndex(path)
+	if err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+	defer loaded.Close()
+
+	// 回归: metric 持久化在文件头中, 加载后公开状态必须仍是 cosine,
+	// 不能因 Go 侧零值回退成 l2。
+	if loaded.Metric() != Cosine {
+		t.Fatalf("loaded Metric = %v (%d), want cosine (%d)",
+			loaded.Metric(), loaded.Metric(), Cosine)
+	}
+	if loaded.Dim() != 2 || loaded.Size() != 2 {
+		t.Fatalf("reloaded state = dim %d size %d", loaded.Dim(), loaded.Size())
+	}
+
+	// 距离语义也必须仍是 cosine: 同向 0、反向 2;
+	// 若底层被当成 L2, 反方向 (-1,0) 对 (2,0) 的平方欧氏距离会是 9 而非 2。
+	rs, err := loaded.Search([]float32{2, 0}, 2)
+	if err != nil {
+		t.Fatalf("Search after reload: %v", err)
+	}
+	if len(rs) != 2 || rs[0].ID != 1 {
+		t.Fatalf("reloaded search = %+v, want id 1 first", rs)
+	}
+	if math.Abs(float64(rs[0].Distance)) > 1e-6 {
+		t.Fatalf("same-direction distance = %v, want 0 (cosine)", rs[0].Distance)
+	}
+	if math.Abs(float64(rs[1].Distance)-2.0) > 1e-6 {
+		t.Fatalf("opposite distance = %v, want 2 (cosine); metric likely reloaded as l2",
+			rs[1].Distance)
 	}
 }
 
